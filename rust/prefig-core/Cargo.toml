@@ -1,0 +1,30 @@
+[package]
+name = "prefig-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Rust port of PreFigure: an authoring system for mathematical diagrams"
+
+[features]
+default = ["xml-parse", "diffeqs", "network", "shapes", "xast"]
+xml-parse = ["dep:quick-xml"]
+xast = ["dep:serde", "dep:serde_json"]
+diffeqs = []
+network = ["dep:petgraph"]
+shapes = ["dep:geo"]
+
+[dependencies]
+log = "0.4"
+indexmap = "2"
+peg = "0.8"
+quick-xml = { version = "0.37", optional = true }
+serde = { version = "1", features = ["derive"], optional = true }
+serde_json = { version = "1", optional = true }
+petgraph = { version = "0.8", optional = true }
+geo = { version = "0.30", optional = true }
+
+[dev-dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+quick-xml = "0.37"

@@ -1,0 +1,15 @@
+[package]
+name = "prefig-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Command-line interface for PreFigure"
+
+[[bin]]
+name = "prefig"
+path = "src/main.rs"
+
+[dependencies]
+prefig-core = { path = "../prefig-core" }
+clap = { version = "4", features = ["derive"] }
