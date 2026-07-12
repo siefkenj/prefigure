@@ -23,52 +23,53 @@ The browser-side support code needs no changes:
 
 ## Steps
 
-1. **Package the WebAssembly build for the website.**
-   Build with `wasm-pack build --target web` (the Node tests use
-   `--target nodejs`; the website needs the browser flavor). Add the output as
-   a workspace package, e.g. `website/packages/prefig-wasm`, or publish to npm
-   as `@prefigure/prefig-wasm` and depend on it normally.
+1. ✅ **Package the WebAssembly build for the website.**
+   `website/packages/prefig-wasm/` is a workspace package
+   (`@prefigure/prefig-wasm`) that builds both flavors with `wasm-pack`:
+   `pkg-node/` (`--target nodejs`, for tests) and `pkg-web/` (`--target web`,
+   for the browser bundle). `npm run build` in that package builds both. The
+   full module is ~858 KB raw / ~320 KB gzipped — vs the ~40 MB Pyodide stack.
 
-2. **Add a second compiler class next to the Pyodide one.**
-   In `src/worker/`, add `compiler-wasm.ts` with the same public interface as
-   `PreFigureCompiler` in `compiler.ts`:
-   - `init()`: load and instantiate the WebAssembly module (one `await import`
-     plus one call), then hand it the `prefigBrowserApi` object.
-   - `compile(mode, source)`: call the module's `build_from_string(mode,
-     source)` and return `{ svg, annotations }`.
-   Keeping both classes lets the playground switch per session while the port
-   matures; the Pyodide path is deleted at the end.
+2. ✅ **Add a second compiler class next to the Pyodide one.**
+   `src/worker/compiler-wasm.ts` (`PreFigureWasmCompiler`) has the same public
+   interface as `PreFigureCompiler`: `init()` loads the module and hands it
+   `prefigBrowserApi` via `set_host_api`; `compile(mode, source)` calls
+   `build_from_string` and returns `{ svg, annotations }`. Both compilers are
+   exposed from `src/worker/index.ts`.
 
-3. **Add a switch.**
-   A query parameter or settings toggle (default: Pyodide at first) selects
-   which compiler the worker constructs. This enables side-by-side comparison
-   on real documents and an easy fallback if a diagram exposes a gap in the
-   port.
+3. ⬜ **Add a switch.** *(remaining — needs live browser verification)*
+   `src/state/model.ts` constructs and drives the compiler through the Comlink
+   worker. To toggle: read a query param (e.g. `?engine=wasm`), and in the
+   `loadPyodide`/`compile` thunks call `worker.wasmCompiler.init()` /
+   `worker.wasmCompiler.compile(mode, source)` instead of the Pyodide one when
+   selected. Left for a browser session because the reactive worker flow can't
+   be verified headlessly; the worker already exposes `wasmCompiler`.
 
-4. **Wire up the tests.**
-   The playground already runs vitest. Add a test that compiles each source in
-   `rust/prefig-core/tests/example_diagrams/` with the WebAssembly compiler and
-   compares the SVG against `rust/prefig-core/tests/expected_svgs/` (same
-   comparison the Rust tests use: identical structure, numbers within
-   tolerance).
+4. ✅ **Wire up the tests.**
+   `test/compiler-wasm.test.ts` (vitest) drives the real WebAssembly module
+   over example diagrams from `rust/prefig-core/tests/example_diagrams/` with a
+   mock host API, asserting valid, non-trivial SVG. The authoritative
+   structural parity (all 37 examples vs Python within tolerance) lives in the
+   Rust suite `rust/prefig-core/tests/expected_svgs.rs`.
 
-5. **Measure and switch the default.**
-   Record load time and download size for both paths. When the example
-   diagrams all match and no open playground bug depends on Pyodide, flip the
-   default to WebAssembly. Keep the Pyodide path for one release as an escape
-   hatch, then remove it and the Python package downloads from `compiler.ts`.
+5. ⬜ **Measure and switch the default.**
+   Record load time and download size for both paths. When no open playground
+   bug depends on Pyodide, flip the default to WebAssembly, keep Pyodide one
+   release as an escape hatch, then remove it and the Python downloads from
+   `compiler.ts`.
 
-6. **Later, for DoenetML:** publish a second, slimmer package variant built
-   with `--no-default-features --features xast,diffeqs,network,shapes` that
-   accepts documents as XAST (the JSON form of XML that Doenet already has)
-   instead of XML text, and grow `PrefigBrowserApi` with `processMathXast` so
-   the module needs no XML parser at all. Details in
-   [`../RUST_PORT_OUTLINE.md`](../RUST_PORT_OUTLINE.md) §10.
+6. ⬜ **Later, for DoenetML:** publish a slimmer variant built with
+   `--no-default-features --features xast,diffeqs` that accepts documents as
+   XAST (the JSON form of XML Doenet already has) instead of XML text, and grow
+   `PrefigBrowserApi` with `processMathXast` so the module needs no XML parser.
+   Details in [`../RUST_PORT_OUTLINE.md`](../RUST_PORT_OUTLINE.md) §10.
 
-## Blockers
+## Status
 
-Steps 2–5 need `build_from_string` to actually build diagrams, which is
-milestones M1–M3 of the port (drawing pipeline, then labels): see
-[PORTING.md](PORTING.md). Step 1 can happen now — the evaluator-only module is
-already buildable and tested — and is a good way to settle the packaging and
-worker-loading questions early.
+Steps 1, 2, and 4 are done and tested; the drawing pipeline (`build_from_string`)
+builds all 37 example diagrams to Python-matching SVG. Step 3 (the reactive
+`model.ts` toggle) and step 5 (measure + flip default) remain and want a live
+browser session. Handlers not yet ported (boolean `<shape>` ops, automatic
+`<network>` layout, `<read>`, `<histogram>`/`<scatter>`, tactile labels) are
+tracked in [PORTING.md](PORTING.md); a document using one currently errors on
+that element, which is the moment to port it.

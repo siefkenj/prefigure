@@ -13,6 +13,10 @@ xast = ["dep:serde", "dep:serde_json"]
 diffeqs = []
 network = ["dep:petgraph"]
 shapes = ["dep:geo"]
+# text measurement through the system libcairo (native builds only)
+text-cairo = []
+# braille via the system liblouis (native tactile builds only)
+braille-liblouis = []
 
 [dependencies]
 log = "0.4"
@@ -25,6 +29,11 @@ petgraph = { version = "0.8", optional = true }
 geo = { version = "0.30", optional = true }
 
 [dev-dependencies]
+# enable cairo text measurement for the parity tests
+prefig-core = { path = ".", features = ["text-cairo"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 quick-xml = "0.37"
+
+[dev-dependencies.env_logger]
+version = "0.11"

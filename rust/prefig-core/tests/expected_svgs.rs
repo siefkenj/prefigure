@@ -18,7 +18,7 @@ fn expected_svgs_dir() -> PathBuf {
 
 fn expected_svg_files() -> Vec<PathBuf> {
     let mut files = Vec::new();
-    for category in ["repo", "docs"] {
+    for category in ["repo", "docs", "synth"] {
         let dir = expected_svgs_dir().join(category);
         if let Ok(entries) = fs::read_dir(&dir) {
             for entry in entries.flatten() {
@@ -77,13 +77,81 @@ fn comparator_selfcheck_numeric_tolerance() {
     assert!(!svg_compare::compare(svg, drifted, 1e-4).is_empty());
 }
 
+/// Examples that must match Python's output. All 37 bundled examples currently
+/// pass; anything that regresses fails the build. New examples added here are
+/// required to pass too (or listed as known-failing above the assert).
+const MUST_PASS_ALL: bool = true;
+
 /// The real parity test: build every example source with the Rust pipeline and
 /// compare against the SVG that Python produced.
 #[test]
-#[ignore = "enable once engine::build_from_string exists (outline milestone M1+)"]
 fn rust_output_matches_python() {
-    unimplemented!(
-        "for each tests/example_diagrams/{{repo,docs}}/NAME.xml: \
-         run the Rust pipeline and svg_compare against tests/expected_svgs/.../NAME.svg"
+    use prefig_core::core::label::LabelState;
+
+    let examples_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/example_diagrams");
+    let mut results: Vec<(String, Vec<String>)> = Vec::new();
+
+    for category in ["repo", "docs", "synth"] {
+        let dir = examples_dir.join(category);
+        let Ok(entries) = fs::read_dir(&dir) else {
+            continue;
+        };
+        let mut paths: Vec<_> = entries
+            .flatten()
+            .map(|e| e.path())
+            .filter(|p| p.extension().is_some_and(|e| e == "xml"))
+            .collect();
+        paths.sort();
+        // <read> and <image> resolve data/ relative to the working directory
+        let _ = std::env::set_current_dir(&dir);
+        for path in paths {
+            let stem = path.file_stem().unwrap().to_string_lossy().into_owned();
+            let name = format!("{category}/{stem}");
+            let source = fs::read_to_string(&path).unwrap();
+            let expected_path = expected_svgs_dir().join(category).join(format!("{stem}.svg"));
+            let Ok(expected) = fs::read_to_string(&expected_path) else {
+                continue;
+            };
+
+            let diffs = match prefig_core::engine::build_source(
+                "svg",
+                &source,
+                &stem,
+                "pretext",
+                LabelState::local("svg"),
+            ) {
+                Ok((svg, _annotations)) => svg_compare::compare(&svg, &expected, 1e-2),
+                Err(e) => vec![format!("build failed: {e}")],
+            };
+            results.push((name, diffs));
+        }
+    }
+
+    let passing: Vec<&str> = results
+        .iter()
+        .filter(|(_, d)| d.is_empty())
+        .map(|(n, _)| n.as_str())
+        .collect();
+    let failing: Vec<&(String, Vec<String>)> =
+        results.iter().filter(|(_, d)| !d.is_empty()).collect();
+
+    println!(
+        "parity: {}/{} examples match Python",
+        passing.len(),
+        results.len()
     );
+    for (name, diffs) in &failing {
+        println!("--- {name}: {} differences, first few:", diffs.len());
+        for d in diffs.iter().take(4) {
+            println!("    {d}");
+        }
+    }
+
+    if MUST_PASS_ALL {
+        let broken: Vec<&str> = failing.iter().map(|(n, _)| n.as_str()).collect();
+        assert!(
+            broken.is_empty(),
+            "these examples no longer match Python: {broken:?}"
+        );
+    }
 }

@@ -1,18 +1,50 @@
 //! WebAssembly bindings for PreFigure.
 //!
-//! What works today: the expression evaluator. The diagram builder
-//! (`build_from_string`) is a placeholder until the drawing pipeline is ported;
-//! it will keep the same signature and return `{ svg, annotations }` like the
-//! Python `prefig.engine.build_from_string`.
+//! `build_from_string(format, source)` returns `{ svg, annotations }`, matching
+//! the Python `prefig.engine.build_from_string` that the playground calls under
+//! Pyodide today. Math rendering, braille, and text measurement are delegated
+//! to a host object (the playground's `PrefigBrowserApi`) supplied once via
+//! `set_host_api`.
 
 use prefig_core::evaluator::ExpressionContext;
 use prefig_core::value::Value;
 use wasm_bindgen::prelude::*;
 
+mod host;
+
 /// The crate version, for checking what is deployed.
 #[wasm_bindgen]
 pub fn version() -> String {
     env!("CARGO_PKG_VERSION").to_string()
+}
+
+/// Register the host API object (the playground's `PrefigBrowserApi`). Must be
+/// called once before `build_from_string`; the same object the Python version
+/// imported as `prefigBrowserApi`.
+#[wasm_bindgen]
+pub fn set_host_api(api: JsValue) {
+    host::set_host_api(api);
+}
+
+/// Build a diagram from PreFigure XML source. `format` is "svg" or "tactile".
+/// Returns `{ svg: string, annotations: string | null }`.
+#[wasm_bindgen]
+pub fn build_from_string(format: &str, source: &str) -> Result<JsValue, JsError> {
+    let labels = host::label_state(format);
+    let (svg, annotations) =
+        prefig_core::engine::build_from_string(format, source, "pyodide", labels)
+            .map_err(|e| JsError::new(&e))?;
+
+    let result = js_sys::Object::new();
+    js_sys::Reflect::set(&result, &"svg".into(), &svg.into())
+        .map_err(|_| JsError::new("failed to set svg"))?;
+    let annotations_js = match annotations {
+        Some(a) => JsValue::from_str(&a),
+        None => JsValue::NULL,
+    };
+    js_sys::Reflect::set(&result, &"annotations".into(), &annotations_js)
+        .map_err(|_| JsError::new("failed to set annotations"))?;
+    Ok(result.into())
 }
 
 /// Evaluates PreFigure math expressions and remembers definitions,
@@ -71,27 +103,10 @@ fn value_to_js(value: &Value) -> JsValue {
         Value::Dict(map) => {
             let object = js_sys::Object::new();
             for (key, item) in map {
-                let _ = js_sys::Reflect::set(
-                    &object,
-                    &JsValue::from_str(key),
-                    &value_to_js(item),
-                );
+                let _ = js_sys::Reflect::set(&object, &JsValue::from_str(key), &value_to_js(item));
             }
             object.into()
         }
         Value::Function(_) => JsValue::from_str("<function>"),
     }
-}
-
-/// Build a diagram from PreFigure XML source. `format` is "svg" or "tactile".
-///
-/// Not implemented yet — the drawing pipeline is still being ported. Once it
-/// lands this returns `{ svg: string, annotations: string | null }`, matching
-/// what the Python version returns under Pyodide.
-#[wasm_bindgen]
-pub fn build_from_string(format: &str, source: &str) -> Result<JsValue, JsError> {
-    let _ = (format, source);
-    Err(JsError::new(
-        "build_from_string is not implemented yet: the drawing pipeline is still being ported",
-    ))
 }

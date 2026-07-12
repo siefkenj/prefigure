@@ -26,7 +26,14 @@ pub enum Function {
     User { params: Vec<String>, body: Expr },
     /// A built-in registered by name (see evaluator/builtins.rs).
     Native(&'static str),
+    /// A function registered from Rust code (derivatives, tangent lines,
+    /// splines, ODE solutions, ...).
+    Closure(ClosureFn),
 }
+
+pub type ClosureFn = Box<
+    dyn Fn(&[Value], &mut crate::evaluator::ExpressionContext) -> Result<Value, EvalError>,
+>;
 
 impl std::fmt::Debug for Value {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -39,6 +46,7 @@ impl std::fmt::Debug for Value {
             Value::Function(func) => match func.as_ref() {
                 Function::User { params, .. } => write!(f, "<function({})>", params.join(", ")),
                 Function::Native(name) => write!(f, "<builtin {name}>"),
+                Function::Closure(_) => write!(f, "<function>"),
             },
         }
     }
@@ -99,33 +107,80 @@ impl Value {
     }
 }
 
+/// Python str() of a number: integers print without a decimal point, floats
+/// print with shortest round-trip digits, switching to scientific notation
+/// when the exponent is < -4 or >= 16 (e.g. "1e-07", "1e+20").
+pub fn py_str(x: f64) -> String {
+    if x.is_nan() {
+        return "nan".to_string();
+    }
+    if x.is_infinite() {
+        return if x > 0.0 { "inf" } else { "-inf" }.to_string();
+    }
+    if x == 0.0 {
+        return "0".to_string();
+    }
+    if x.fract() == 0.0 && x.abs() < 1e16 {
+        return format!("{}", x as i64);
+    }
+    // {:e} gives shortest round-trip digits as d[.ddd]e[-]E
+    let sci = format!("{x:e}");
+    let (mantissa, exp) = sci.split_once('e').expect("exponent in {:e} output");
+    let exp: i32 = exp.parse().expect("numeric exponent");
+    let negative = mantissa.starts_with('-');
+    let digits: String = mantissa.chars().filter(|c| c.is_ascii_digit()).collect();
+    let sign = if negative { "-" } else { "" };
+
+    let body = if (-4..16).contains(&exp) {
+        if exp >= 0 {
+            let exp = exp as usize;
+            if digits.len() > exp + 1 {
+                format!("{}.{}", &digits[..=exp], &digits[exp + 1..])
+            } else {
+                format!("{}{}.0", digits, "0".repeat(exp + 1 - digits.len()))
+            }
+        } else {
+            format!("0.{}{}", "0".repeat((-exp - 1) as usize), digits)
+        }
+    } else {
+        let mantissa = if digits.len() > 1 {
+            format!("{}.{}", &digits[..1], &digits[1..])
+        } else {
+            digits
+        };
+        format!("{}e{}{:02}", mantissa, if exp < 0 { '-' } else { '+' }, exp.abs())
+    };
+    format!("{sign}{body}")
+}
+
+impl Value {
+    /// Python str() of this value, as when it lands in an SVG attribute.
+    pub fn to_py_str(&self) -> String {
+        match self {
+            Value::Num(n) => py_str(*n),
+            Value::Bool(b) => if *b { "True" } else { "False" }.to_string(),
+            Value::Str(s) => s.clone(),
+            Value::Array(items) => {
+                // numpy legacy-1.25 printing: [1 2 3] for ints, [1. 2.5] for floats
+                let parts: Vec<String> = items.iter().map(|v| v.to_py_str()).collect();
+                format!("[{}]", parts.join(" "))
+            }
+            Value::Dict(_) | Value::Function(_) => format!("{self:?}"),
+        }
+    }
+}
+
 fn scalar_binop(op: BinOp, a: f64, b: f64) -> Result<f64, EvalError> {
     match op {
         BinOp::Add => Ok(a + b),
         BinOp::Sub => Ok(a - b),
         BinOp::Mult => Ok(a * b),
-        BinOp::Div => {
-            if b == 0.0 {
-                Err(err("division by zero"))
-            } else {
-                Ok(a / b)
-            }
-        }
-        BinOp::FloorDiv => {
-            if b == 0.0 {
-                Err(err("division by zero"))
-            } else {
-                Ok((a / b).floor())
-            }
-        }
-        // Python semantics: result has the sign of the divisor
-        BinOp::Mod => {
-            if b == 0.0 {
-                Err(err("modulo by zero"))
-            } else {
-                Ok(a - b * (a / b).floor())
-            }
-        }
+        // IEEE semantics on zero divisors (inf/nan), matching the numpy
+        // floats that author functions evaluate over in Python
+        BinOp::Div => Ok(a / b),
+        BinOp::FloorDiv => Ok((a / b).floor()),
+        // Python/numpy semantics: result has the sign of the divisor
+        BinOp::Mod => Ok(a - b * (a / b).floor()),
         BinOp::Pow => Ok(a.powf(b)),
     }
 }

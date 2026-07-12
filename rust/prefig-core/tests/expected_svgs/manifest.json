@@ -1,18 +1,31 @@
 {
+ "repo": {
+  "built": [
+   "de-system",
+   "derivatives",
+   "diffeqs",
+   "implicit",
+   "projection",
+   "riemann",
+   "roots_of_unity",
+   "tangent"
+  ],
+  "skipped": []
+ },
  "docs": {
-  "pass": [
+  "built": [
    "annotated-rs",
    "attack",
    "big-zero-include",
    "fill-patterns",
    "fonts",
    "grad-field",
-   "gradient",
    "gradient-annotated",
+   "gradient",
    "iris_scatter_1",
    "labels_on_line",
-   "loglog",
    "loglog-spacing",
+   "loglog",
    "network-loops",
    "number-line",
    "path_decorations",
@@ -25,25 +38,20 @@
    "ticks-bbox",
    "transform-3",
    "vec-field",
-   "vector-field",
    "vector-field-exponent-1",
    "vector-field-exponent-2",
+   "vector-field",
    "vector-labels",
    "wasatch"
   ],
-  "fail": []
+  "skipped": []
  },
- "repo": {
-  "pass": [
-   "de-system",
-   "derivatives",
-   "diffeqs",
-   "implicit",
-   "projection",
-   "riemann",
-   "roots_of_unity",
-   "tangent"
+ "synth": {
+  "built": [
+   "delta_ode",
+   "histogram",
+   "read_scatter"
   ],
-  "fail": []
+  "skipped": []
  }
 }

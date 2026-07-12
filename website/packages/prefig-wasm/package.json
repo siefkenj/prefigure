@@ -1,0 +1,22 @@
+{
+    "name": "@prefigure/prefig-wasm",
+    "version": "0.7.0",
+    "private": true,
+    "description": "PreFigure (Rust port) compiled to WebAssembly",
+    "license": "GPL-3.0-only",
+    "type": "module",
+    "main": "./pkg-node/prefig_wasm.js",
+    "module": "./pkg-web/prefig_wasm.js",
+    "exports": {
+        ".": {
+            "node": "./pkg-node/prefig_wasm.js",
+            "default": "./pkg-web/prefig_wasm.js"
+        }
+    },
+    "files": ["pkg-node", "pkg-web"],
+    "scripts": {
+        "build": "npm run build:node && npm run build:web",
+        "build:node": "wasm-pack build ../../../rust/prefig-wasm --release --target nodejs --out-dir ../../website/packages/prefig-wasm/pkg-node",
+        "build:web": "wasm-pack build ../../../rust/prefig-wasm --release --target web --out-dir ../../website/packages/prefig-wasm/pkg-web"
+    }
+}

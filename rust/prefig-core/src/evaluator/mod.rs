@@ -9,6 +9,7 @@ mod builtins;
 mod interp;
 mod parse;
 
+pub use interp::call_value as interp_call;
 pub use parse::{parse_expression, ParseError};
 
 use crate::value::{Function, Value};
@@ -45,6 +46,17 @@ impl From<ParseError> for EvalError {
 
 pub struct ExpressionContext {
     pub(crate) vars: IndexMap<String, Value>,
+    /// The current bounding box, kept in sync by the Diagram so that
+    /// intersect(), line_intersection(), ... can see it.
+    pub env_bbox: Option<[f64; 4]>,
+    /// The current 3-D transform and eye point, for proj_2d().
+    pub env_ctm3d: Option<(crate::core::ctm::Mat4, [f64; 2])>,
+    /// While collecting ODE break points, delta(t, a) records `a` here and
+    /// returns 0 (user_namespace.find_breaks).
+    pub delta_breaks: Option<Vec<f64>>,
+    /// While measuring an ODE jump, delta(t, a) returns 1 at t≈a
+    /// (user_namespace.measure_de_jump).
+    pub delta_on: bool,
 }
 
 impl Default for ExpressionContext {
@@ -59,7 +71,29 @@ impl ExpressionContext {
         vars.insert("e".to_string(), Value::Num(std::f64::consts::E));
         vars.insert("pi".to_string(), Value::Num(std::f64::consts::PI));
         vars.insert("inf".to_string(), Value::Num(f64::INFINITY));
-        ExpressionContext { vars }
+        ExpressionContext {
+            vars,
+            env_bbox: None,
+            env_ctm3d: None,
+            delta_breaks: None,
+            delta_on: false,
+        }
+    }
+
+    /// Port of user_namespace.derivative: register `name` as the numerical
+    /// derivative of function `f`.
+    pub fn register_derivative(&mut self, name: &str, f: Value) {
+        let closure = move |args: &[Value], ctx: &mut ExpressionContext| {
+            let x = args
+                .first()
+                .ok_or_else(|| EvalError::new("missing argument"))?
+                .as_num()?;
+            builtins::value_derivative(&f, x, ctx)
+        };
+        self.vars.insert(
+            name.to_string(),
+            Value::Function(Rc::new(Function::Closure(Box::new(closure)))),
+        );
     }
 
     /// Port of user_namespace.valid_eval(s).

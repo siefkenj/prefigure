@@ -5,5 +5,7 @@
 //! Python-file → Rust-module mapping.
 
 pub mod core;
+pub mod engine;
 pub mod evaluator;
 pub mod value;
+pub mod xml;

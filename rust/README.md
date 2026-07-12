@@ -13,10 +13,16 @@ diagrams in the browser without downloading the much larger Python stack.
 
 | Directory | Contents |
 |---|---|
-| `prefig-core/` | The library: expression evaluator now, drawing pipeline in progress |
+| `prefig-core/` | The library: expression evaluator and the diagram drawing pipeline |
 | `prefig-wasm/` | WebAssembly bindings for browsers and Node |
 | `prefig-cli/` | The `prefig` command-line program |
 | `tools/` | Scripts that generate test data from the Python version |
+
+The drawing pipeline builds all 37 bundled example diagrams to SVG that matches
+the Python version within tolerance (`prefig-core/tests/expected_svgs.rs`). A
+few elements are not ported yet — boolean `<shape>` operations, automatic
+`<network>` layout, `<read>`, `<histogram>`/`<scatter>`, and tactile output;
+see [PORTING.md](PORTING.md).
 
 ## Requirements
 

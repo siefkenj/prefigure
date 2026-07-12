@@ -24,7 +24,11 @@ build_dir () {  # $1 = src dir with xml files, $2 = category (repo|docs)
     mkdir -p "$WORK/$cat" "$FIX/$cat" "$GOLD/$cat"
     cp "$src"/*.xml "$WORK/$cat/"
     # <read> data files resolve to data/ under the build cwd (pretext environment)
-    if [ -d "$src/../data" ]; then cp -r "$src/../data" "$WORK/$cat/data"; fi
+    if [ -d "$src/../data" ]; then
+        cp -r "$src/../data" "$WORK/$cat/data"
+        # the Rust parity test needs the same data files
+        rm -rf "$FIX/$cat/data" && cp -r "$src/../data" "$FIX/$cat/data"
+    fi
     PREFIG_BIN="$PWD/.venv/bin/prefig"
     ls "$WORK/$cat"/*.xml | xargs -P 4 -I{} bash -c '
         f={}; name=$(basename "$f" .xml)

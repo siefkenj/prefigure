@@ -28,7 +28,8 @@
         "react": "^18.3.1",
         "react-bootstrap-icons": "^1.11.5",
         "react-dom": "^18.3.1",
-        "speech-rule-engine": "5.0.0-beta.7"
+        "speech-rule-engine": "5.0.0-beta.7",
+        "@prefigure/prefig-wasm": "*"
     },
     "devDependencies": {
         "@types/node": "^22.10.1",

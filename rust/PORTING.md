@@ -8,19 +8,56 @@ update the matching Rust module and this table.**
 
 Last full sync: Python @ `d0ac23a` (version 0.7.0).
 
+## Status
+
+Every `prefig/core/*.py` handler is ported. All 40 example diagrams — 8 from the
+repo, 29 from [prefigure-docs](https://github.com/davidaustinm/prefigure-docs),
+and 3 synthetic (histogram, delta-forced ODE, read+scatter) — build with the
+Rust pipeline and match the Python SVG output within tolerance
+(`tests/expected_svgs.rs`, `MUST_PASS_ALL = true`). Goldens are generated in the
+`pretext` environment so `<read>`/`<image>` resolve their data files
+(`rust/tools/generate_expected_svgs.py`).
+
+Two subsystems are implemented but cannot be coordinate-parity-tested against
+the reference, by nature: boolean `<shape>` ops (geometrically correct via the
+`geo` crate, but not vertex-identical to shapely) and automatic `<network>`
+layouts (valid deterministic layouts, but not identical to networkx's PRNG-based
+coordinates). Tactile output is a faithful port; it needs a braille translator
+(the `braille-liblouis` feature natively, or the browser host in WASM), neither
+available in CI, so it has no golden — but Python's own no-liblouis tactile path
+actually crashes on outlined labels where the Rust port renders correctly.
+
 | Python module | Rust module | Status | Notes |
 |---|---|---|---|
-| `core/user_namespace.py` | `evaluator/` (mod, parse, interp, builtins) | ✅ ported | Instance-based `ExpressionContext` instead of module globals (outline §4.1). Parser is a dedicated PEG grammar (outline §16), not Python's `ast`. Missing: `derivative()` registration, `enter_function`, ODE break/delta machinery (`find_breaks`, `measure_de_jump`) — land with `diffeqs.rs`. |
-| `core/math_utilities.py` | `evaluator/builtins.rs` | 🟡 partial | Everything except the diagram-dependent functions (`intersect`, `solve`, `proj_2d`, `line_intersection`, `filter`, `grad`, `delta`) — they need the `EvalEnv` handle (outline §4.1) or `Diagram`. Move to `core/math_utilities.rs` when `Diagram` exists. |
-| `core/calculus.py` | `core/calculus.rs` | ✅ ported | Richardson-extrapolated derivative. |
-| `core/parse.py` | — | ⬜ next (M1) | |
-| `core/diagram.py` | — | ⬜ next (M1) | |
-| `core/CTM.py` | — | ⬜ next (M1) | |
-| `core/utilities.py` | — | ⬜ next (M1) | |
-| `core/tags.py` | — | ⬜ M1 | |
-| everything else in `core/` | — | ⬜ M1–M4 | See outline §13 milestones. |
-| `engine.py` | — | ⬜ M1 | `build_from_string` unblocks the `rust_output_matches_python` test. |
-| `cli.py` | — | ⬜ M6 | |
+| `core/user_namespace.py` | `evaluator/` (mod, parse, interp, builtins) | ✅ | Instance-based `ExpressionContext`; dedicated PEG parser (outline §16); ODE `delta`/break state on the context. |
+| `core/math_utilities.py` | `evaluator/builtins.rs`, `core/math_utilities.rs` | ✅ | includes `intersect`/`solve`/`proj_2d`/`line_intersection`/`filter`/`delta` via the `env_bbox`/`env_ctm3d`/delta handles on the context. |
+| `core/calculus.py` | `core/calculus.rs` | ✅ | |
+| `core/utilities.py` | `core/utilities.rs` | ✅ | |
+| `core/CTM.py` | `core/ctm.rs`, `core/ctm_handlers.rs` | ✅ | |
+| `core/diagram.py` | `core/diagram.rs` | ✅ | |
+| `core/parse.py` | `core/parse.rs` | ✅ | |
+| `engine.py` | `engine.rs` | ✅ | `build_from_string`, `build_source`, `build` (file). |
+| `core/tags.py` | `core/tags.rs` | ✅ | |
+| `core/label.py`, `label_tools.py` | `core/label.rs`, `core/label_tools.rs` | ✅ | svg + braille label placement. Text via cairo (`text-cairo`), MathJax via node, braille via liblouis (`braille-liblouis`) or the WASM host. |
+| `core/annotations.py` | `core/annotations.rs` | ✅ | includes `diagram_to_speech` (pyodide default annotations), verified byte-for-byte against Python. |
+| `core/coordinates.py` | `core/coordinates.rs` | ✅ | |
+| `core/grid_axes.py`, `axes.py` | `core/grid_axes.rs`, `core/axes.rs` | ✅ | |
+| `core/graph.py` | `core/graph.rs` | ✅ | |
+| `core/line.py`, `point.py`, `circle.py` | same names | ✅ | `circle.angle` (angle-marker) ported. |
+| `core/arrow.py` | `core/arrow.rs` | ✅ | |
+| `core/definition.py`, `group.py`, `repeat.py` | same names | ✅ | |
+| `core/tangent_line.py` | `core/tangent_line.rs` | ✅ | |
+| `core/rectangle.py`, `polygon.py` | same names | ✅ | polygon covers spline/triangle; cubic spline in `core/spline.rs`. |
+| `core/parametric_curve.py`, `path.py` | same names | ✅ | path decorations (coil/zigzag/wave/ragged/capacitor) ported; ragged RNG reimplements numpy MT19937. |
+| `core/area.py`, `riemann_sum.py`, `implicit.py` | same names | ✅ | |
+| `core/slope_field.py`, `vector.py` | same names | ✅ | |
+| `core/image.py`, `clip.py`, `shape.py` | same names | ✅ | shape boolean ops via `geo` (feature `shapes`); not vertex-identical to shapely. |
+| `core/diffeqs.py` | `core/diffeqs.rs` | ✅ | in-repo RK45 (scipy `solve_ivp` constants + dense output) + `delta`-forcing breaks. |
+| `core/legend.py` | `core/legend.rs` | ✅ | svg + tactile legend. |
+| `core/network.py` | `core/network.rs`, `network_layout.rs` | ✅ | 7 auto-layouts (spring/spectral/bfs/circular/random/bipartite/planar→spring); not networkx-identical. |
+| `core/read.py` | `core/read.rs` | ✅ | hand-rolled CSV reader (delimiter/quotechar). |
+| `core/statistics.py` | `core/statistics.rs` | ✅ | `<scatter>`/`<histogram>`; `filter` builtin for CSV columns. |
+| `cli.py`, `engine.py` | `prefig-cli`, `engine.rs` | ✅ | `build`/`pdf`/`png`/`new`/`init`/`examples`/`validate`/`eval` all wired. `pdf`/`png` shell out to `rsvg-convert`; `validate` shells out to `xmllint`/`jing` (no pure-Rust RelaxNG); `view` (browser launcher) is intentionally omitted. |
 
 ## Test suites (TDD ground truth)
 
@@ -28,10 +65,12 @@ Last full sync: Python @ `d0ac23a` (version 0.7.0).
 |---|---|---|
 | `tests/parser.rs` | outline §16.5 corner-case table | hand-maintained |
 | `tests/expression_tests.rs` + `tests/expression_tests.json` | Python `user_namespace` (147 steps, 12 sessions) | `poetry run python rust/tools/generate_expression_tests.py` |
-| `tests/expected_svgs.rs` + `tests/expected_svgs/{repo,docs}/*.svg` | Python-built SVGs: 8 repo examples + 29 diagrams from [prefigure-docs](https://github.com/davidaustinm/prefigure-docs) (GPL, same author) | `rust/tools/generate_expected_svgs.sh <prefigure-docs checkout>` |
+| `tests/expected_svgs.rs` + `tests/expected_svgs/{repo,docs,synth}/*.svg` | Python-built SVGs (pretext env): 8 repo + 29 docs + 3 synthetic | `poetry run python rust/tools/generate_expected_svgs.py <prefigure-docs checkout>` |
 
-Regenerate these files whenever the corresponding Python modules change;
-they are checked in so CI needs no Python.
+The parity tests build in the `pretext` environment and need MathJax (node) and
+libcairo on the host; data files (`tests/example_diagrams/{docs,synth}/data/`)
+are checked in for `<read>`/`<image>`. Synthetic sources live in
+`rust/tools/synthetic_examples/`.
 
 ## Behavioral findings pinned by the test data (don't "fix" these)
 
@@ -40,8 +79,17 @@ they are checked in so CI needs no Python.
 - `[(1,2),(3,4)] + (10,20)` broadcasts over rows (trailing-dimension
   alignment), not element-by-element zip.
 - `round()` is banker's rounding **on the true decimal value**:
-  `round(2.675, 2) == 2.67`. Implemented via format-then-parse; a
-  multiply-by-10^n scale would give 2.68.
+  `round(2.675, 2) == 2.67`. Implemented via format-then-parse.
 - `valid_eval("  #abc")` returns the string **with leading whitespace**.
 - `rgb(...)` components are evaluated then truncated toward zero (`int()`).
 - Python `%` and `//` follow the divisor's sign: `-7 // 2 == -4`, `-7 % 3 == 2`.
+- `math.sin(1/0)`-style errors: division is IEEE (`inf`/`nan`) but `sqrt`,
+  `log`, `asin`, `acos` **raise** on domain errors — graphing relies on this to
+  find domain edges and asymptotes.
+- `np.linspace(a, b, N)` has **N** points (N-1 intervals). Our `linspace(a,b,m)`
+  helper returns **m+1**, so call it with `N-1` when mirroring `np.linspace(...,N)`
+  (diffeqs `t_eval`); the graph/axes code already accounts for this.
+- The environment string controls the `data/` prefix for `<read>`/`<image>` and
+  the comma format in axis labels. The parity harness uses `"pretext"` (reads
+  from `data/`); `"pyodide"` uses a bare `,` grouping separator and a hashed id
+  prefix. `ET.tostring` (and our writer) escape non-ASCII as `&#N;` entities.

@@ -2,7 +2,22 @@
 // Run with `npm test` (builds the wasm first) or `npm run test:only`.
 
 import { describe, it, expect } from "vitest";
-import { version, Evaluator, build_from_string } from "../pkg/prefig_wasm.js";
+import {
+    version,
+    Evaluator,
+    build_from_string,
+    set_host_api,
+} from "../pkg/prefig_wasm.js";
+
+// A minimal stand-in for the playground's PrefigBrowserApi. Real MathJax/SRE
+// aren't available in this test, so math labels get fixed-size placeholders.
+const mockHostApi = {
+    measure_text: (text, _font) => [text.length * 8, 10, 3],
+    translate_text: (text, _typeform) => text,
+    processMath: (_tex) =>
+        `<svg xmlns="http://www.w3.org/2000/svg" width="1ex" height="1ex" style="vertical-align: 0ex"><defs/></svg>`,
+    processBraille: (_tex) => "⠠",
+};
 
 describe("version", () => {
     it("reports the crate version", () => {
@@ -56,9 +71,25 @@ describe("Evaluator", () => {
 });
 
 describe("build_from_string", () => {
-    it("is not implemented yet and says so", () => {
-        expect(() => build_from_string("svg", "<diagram/>")).toThrow(
-            /not implemented yet/,
-        );
+    it("builds a simple diagram to SVG", () => {
+        set_host_api(mockHostApi);
+        const source = `
+            <diagram dimensions="(200,200)" margins="5">
+              <coordinates bbox="[-4,-4,4,4]">
+                <grid-axes/>
+                <circle center="(0,0)" radius="2" stroke="blue"/>
+              </coordinates>
+            </diagram>`;
+        const { svg, annotations } = build_from_string("svg", source);
+        expect(svg).toMatch(/^<svg/);
+        expect(svg).toContain("width=");
+        expect(svg).toContain("path"); // the circle and grid render as paths
+        // no <annotations> in the source, so annotations is null
+        expect(annotations).toBeNull();
+    });
+
+    it("reports an error for source with no diagram", () => {
+        set_host_api(mockHostApi);
+        expect(() => build_from_string("svg", "<nope/>")).toThrow(/diagram/);
     });
 });

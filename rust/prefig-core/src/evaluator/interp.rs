@@ -125,6 +125,7 @@ pub fn call_value(
                 eval_expr(body, ctx, &locals)
             }
             Function::Native(name) => builtins::call(name, args, ctx),
+            Function::Closure(f) => f(args, ctx),
         },
         other => Err(EvalError::new(format!("{other:?} is not callable"))),
     }
