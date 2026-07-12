@@ -13,3 +13,14 @@ wasm
 *.tsbuildinfo
 *.swp
 .vite
+
+# rust/
+/rust/target/
+
+# rust/prefig-wasm/
+/rust/prefig-wasm/pkg/
+/rust/prefig-wasm/node_modules/
+
+# website/packages/prefig-wasm/
+/website/packages/prefig-wasm/pkg-node/
+/website/packages/prefig-wasm/pkg-web/
