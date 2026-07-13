@@ -8,28 +8,63 @@ import {
     ThunkOn,
     thunkOn,
 } from "easy-peasy";
-import { PreFigureCompiler } from "../worker/compiler";
 import * as Comlink from "comlink";
 import Worker from "../worker?worker";
 import type { api } from "../worker";
 
-// Make a local version of the compiler
-let compiler = new PreFigureCompiler();
-(window as any).comp = compiler;
+/** Which implementation compiles the diagram. */
+export type Engine = "pyodide" | "wasm";
 
 const worker = Comlink.wrap<typeof api>(new Worker());
-//// Create a worker-based instance of the compiler
+
+// The worker exposes two drop-in compilers: the Python-via-Pyodide one and the
+// Rust-via-WebAssembly one. The Comlink types describe promises, but each is a
+// proxy object we call methods on directly (each call returns a promise).
+const pyodideCompiler = worker.compiler as any as Awaited<typeof worker.compiler>;
+const wasmCompiler = worker.wasmCompiler as any as Awaited<
+    typeof worker.wasmCompiler
+>;
 (window as any).compWorker = worker.compiler;
-// The types seem to be wrong. We are not awaiting a promise here. Instead we have a proxy object
-// directly exposed to the main thread.
-compiler = worker.compiler as any as Awaited<typeof worker.compiler>;
+
+/** The engine requested via the `?engine=wasm` query parameter, if any. */
+function initialEngine(): Engine {
+    try {
+        return new URLSearchParams(window.location.search).get("engine") ===
+            "wasm"
+            ? "wasm"
+            : "pyodide";
+    } catch {
+        return "pyodide";
+    }
+}
+
+/**
+ * Persist the selected engine in the URL so it survives a page refresh. The
+ * default ("pyodide") drops the parameter to keep shared links clean.
+ */
+function writeEngineToUrl(engine: Engine): void {
+    try {
+        const url = new URL(window.location.href);
+        if (engine === "wasm") {
+            url.searchParams.set("engine", "wasm");
+        } else {
+            url.searchParams.delete("engine");
+        }
+        window.history.replaceState(null, "", url.toString());
+    } catch {
+        // Non-browser or restricted environment; nothing to persist.
+    }
+}
 
 export interface PlaygroundModel {
     source: string;
     compiledSource: string;
     annotations: string;
-    status: "" | "loadingPyodide" | "compiling";
+    status: "" | "loadingPyodide" | "loadingWasm" | "compiling";
     compileMode: "svg" | "tactile";
+    engine: Engine;
+    setEngine: Action<PlaygroundModel, Engine>;
+    onSetEngine: ThunkOn<PlaygroundModel>;
     prefigVersion: string;
     setPrefigVersion: Action<PlaygroundModel, string>;
     errorState: string;
@@ -37,7 +72,10 @@ export interface PlaygroundModel {
     onSetSource: ThunkOn<PlaygroundModel>;
     setCompiledSource: Action<PlaygroundModel, string>;
     setAnnotations: Action<PlaygroundModel, string>;
-    setStatus: Action<PlaygroundModel, "" | "loadingPyodide" | "compiling">;
+    setStatus: Action<
+        PlaygroundModel,
+        "" | "loadingPyodide" | "loadingWasm" | "compiling"
+    >;
     setErrorState: Action<PlaygroundModel, string>;
     setCompileMode: Action<PlaygroundModel, "svg" | "tactile">;
     onSetCompileMode: ThunkOn<PlaygroundModel>;
@@ -78,6 +116,7 @@ export const playgroundModel: PlaygroundModel = {
     compiledSource: "",
     annotations: "",
     compileMode: "svg",
+    engine: initialEngine(),
     errorState: "",
     status: "",
     prefigVersion: "",
@@ -112,20 +151,32 @@ export const playgroundModel: PlaygroundModel = {
     setCompileMode: action((state, payload) => {
         state.compileMode = payload;
     }),
-    loadPyodide: thunk(async (actions) => {
+    setEngine: action((state, payload) => {
+        state.engine = payload;
+    }),
+    loadPyodide: thunk(async (actions, _, { getState }) => {
+        // Despite the name, this initializes whichever engine is selected. It
+        // is a trigger for `onSetSource`, so the name is kept for stability.
+        if (getState().engine === "wasm") {
+            actions.setStatus("loadingWasm");
+            await wasmCompiler.init();
+            actions.setPrefigVersion(await wasmCompiler.version());
+            actions.setStatus("");
+            return;
+        }
         actions.setStatus("loadingPyodide");
         // Initialize Pyodide
         const indexURL = new URL(
             "./assets/pyodide",
             window.location.href,
         ).toString();
-        await compiler.init({
+        await pyodideCompiler.init({
             indexURL,
         });
         // Import `prefig` once so that it is cached
-        await compiler.pyodide?.runPythonAsync("import prefig");
+        await pyodideCompiler.pyodide?.runPythonAsync("import prefig");
         // Get the version of `prefig` that is loaded
-        const version = await compiler.pyodide?.runPythonAsync(
+        const version = await pyodideCompiler.pyodide?.runPythonAsync(
             "from importlib.metadata import version; version('prefig')",
         );
         actions.setPrefigVersion(version);
@@ -134,10 +185,12 @@ export const playgroundModel: PlaygroundModel = {
     compile: thunk(async (actions, _, { getState }) => {
         const source = getState().source;
         const mode = getState().compileMode;
+        const activeCompiler =
+            getState().engine === "wasm" ? wasmCompiler : pyodideCompiler;
         try {
             actions.setErrorState("");
             actions.setStatus("compiling");
-            const compiled = await compiler.compile(mode, source);
+            const compiled = await activeCompiler.compile(mode, source);
             // console.log("Got compiled results", compiled);
             actions.setCompiledSource(compiled.svg);
             actions.setAnnotations(compiled.annotations || "");
@@ -161,15 +214,28 @@ export const playgroundModel: PlaygroundModel = {
         },
     ),
     /**
+     * Whenever the engine changes, initialize the newly-selected engine (if it
+     * has not been loaded yet) and recompile so the view reflects it.
+     */
+    onSetEngine: thunkOn(
+        (actions, storeActions) => actions.setEngine,
+        async (actions, target) => {
+            writeEngineToUrl(target.payload);
+            await actions.loadPyodide();
+            await actions.compile();
+        },
+    ),
+    /**
      * Whenever the source changes, we want to debounce and then recompile as a side effect.
      */
     onSetSource: thunkOn(
         (actions, storeActions) => [actions.loadPyodide, actions.setSource],
         async (actions, target, { getState }) => {
-            // Wait a maximum of 2 minutes if we are still loading pyodide
+            // Wait a maximum of 2 minutes if we are still loading an engine
             let timeStart = Date.now();
             while (
-                getState().status === "loadingPyodide" &&
+                (getState().status === "loadingPyodide" ||
+                    getState().status === "loadingWasm") &&
                 Date.now() - timeStart < 120000
             ) {
                 await sleep(100);

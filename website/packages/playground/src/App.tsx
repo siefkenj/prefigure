@@ -1,15 +1,26 @@
 import React from "react";
-import { Container, Navbar, Nav, NavDropdown, Row, Col } from "react-bootstrap";
+import {
+    Container,
+    Navbar,
+    Nav,
+    NavDropdown,
+    Row,
+    Col,
+    ButtonGroup,
+    ToggleButton,
+} from "react-bootstrap";
 import "bootstrap/dist/css/bootstrap.min.css";
 import "./font.css";
 import "./App.css";
 import { SourceEditor } from "./components/editor";
 import { diagcessVersion, Renderer } from "./components/renderer";
 import { prefigBrowserApi } from "./worker/compat-api";
-import { useStoreState } from "./state";
+import { useStoreState, useStoreActions } from "./state";
 
 function App() {
     const version = useStoreState((state) => state.prefigVersion);
+    const engine = useStoreState((state) => state.engine);
+    const setEngine = useStoreActions((actions) => actions.setEngine);
 
     return (
         <React.Fragment>
@@ -23,6 +34,32 @@ function App() {
                         <Nav.Link href="https://prefigure.org/docs/chap-examples.html" target="_blank">Examples</Nav.Link>
                         <Nav.Link href="https://prefigure.org" target="_blank">About</Nav.Link>
                     </Nav>
+                    <ButtonGroup className="engine-toggle me-3" size="sm" aria-label="Compiler engine">
+                        <ToggleButton
+                            id="engine-pyodide"
+                            type="radio"
+                            name="engine"
+                            value="pyodide"
+                            checked={engine === "pyodide"}
+                            variant={engine === "pyodide" ? "light" : "outline-light"}
+                            onClick={() => setEngine("pyodide")}
+                            title="Compile with the Python implementation running in Pyodide"
+                        >
+                            Python
+                        </ToggleButton>
+                        <ToggleButton
+                            id="engine-wasm"
+                            type="radio"
+                            name="engine"
+                            value="wasm"
+                            checked={engine === "wasm"}
+                            variant={engine === "wasm" ? "light" : "outline-light"}
+                            onClick={() => setEngine("wasm")}
+                            title="Compile with the Rust port compiled to WebAssembly"
+                        >
+                            Rust
+                        </ToggleButton>
+                    </ButtonGroup>
                     <NavDropdown className="version-menu bg-primary" title="Versions" align="end">
                         <div className="version-grid">
                             {([

@@ -37,13 +37,16 @@ The browser-side support code needs no changes:
    `build_from_string` and returns `{ svg, annotations }`. Both compilers are
    exposed from `src/worker/index.ts`.
 
-3. ⬜ **Add a switch.** *(remaining — needs live browser verification)*
-   `src/state/model.ts` constructs and drives the compiler through the Comlink
-   worker. To toggle: read a query param (e.g. `?engine=wasm`), and in the
-   `loadPyodide`/`compile` thunks call `worker.wasmCompiler.init()` /
-   `worker.wasmCompiler.compile(mode, source)` instead of the Pyodide one when
-   selected. Left for a browser session because the reactive worker flow can't
-   be verified headlessly; the worker already exposes `wasmCompiler`.
+3. ✅ **Add a switch.**
+   `src/state/model.ts` now holds an `engine: "pyodide" | "wasm"` state,
+   initialized from the `?engine=wasm` query parameter. The `loadPyodide`
+   (init) and `compile` thunks dispatch to `worker.wasmCompiler` or
+   `worker.compiler` accordingly, and an `onSetEngine` thunk re-initializes the
+   selected engine and recompiles when it changes. A **Python / Rust** toggle in
+   the navbar (`App.tsx`) drives it, and the loading spinner
+   (`renderer.tsx`) covers the `loadingWasm` state. Typechecks, bundles the
+   WebAssembly chunk, and the vitest suite passes; the interactive reactive flow
+   still wants a click-through in a real browser (`npm run dev`).
 
 4. ✅ **Wire up the tests.**
    `test/compiler-wasm.test.ts` (vitest) drives the real WebAssembly module
@@ -66,10 +69,9 @@ The browser-side support code needs no changes:
 
 ## Status
 
-Steps 1, 2, and 4 are done and tested; the drawing pipeline (`build_from_string`)
-builds all 37 example diagrams to Python-matching SVG. Step 3 (the reactive
-`model.ts` toggle) and step 5 (measure + flip default) remain and want a live
-browser session. Handlers not yet ported (boolean `<shape>` ops, automatic
-`<network>` layout, `<read>`, `<histogram>`/`<scatter>`, tactile labels) are
-tracked in [PORTING.md](PORTING.md); a document using one currently errors on
-that element, which is the moment to port it.
+Steps 1–4 are done and tested; the drawing pipeline (`build_from_string`)
+builds all 40 example diagrams to Python-matching SVG, and the playground has a
+working Python/Rust engine toggle. Step 5 (measure load time + download size,
+then flip the default to WebAssembly) remains and wants a live browser session.
+Every `prefig/core/*.py` handler is now ported (see [PORTING.md](PORTING.md)),
+so documents no longer error on unported elements.

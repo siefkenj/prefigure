@@ -40,12 +40,24 @@ pub struct Graph {
 
 impl Graph {
     pub fn new(nodes: &[String], edges: &[(String, String)]) -> Graph {
-        let index: IndexMap<String, usize> = nodes
+        // Start from the declared nodes, then add any edge endpoint that isn't
+        // already present, in first-seen order. This mirrors networkx's
+        // `add_edge`, which implicitly creates missing endpoint nodes; without
+        // it, a node that appears only as an edge destination (never as a graph
+        // key or <node>) would get no position and later panic.
+        let mut node_list: Vec<String> = nodes.to_vec();
+        let mut index: IndexMap<String, usize> = node_list
             .iter()
             .enumerate()
             .map(|(i, n)| (n.clone(), i))
             .collect();
-        let mut adj = vec![Vec::new(); nodes.len()];
+        for endpoint in edges.iter().flat_map(|(a, b)| [a, b]) {
+            if !index.contains_key(endpoint) {
+                index.insert(endpoint.clone(), node_list.len());
+                node_list.push(endpoint.clone());
+            }
+        }
+        let mut adj = vec![Vec::new(); node_list.len()];
         for (a, b) in edges {
             if let (Some(&i), Some(&j)) = (index.get(a), index.get(b)) {
                 if i != j && !adj[i].contains(&j) {
@@ -55,7 +67,7 @@ impl Graph {
             }
         }
         Graph {
-            nodes: nodes.to_vec(),
+            nodes: node_list,
             index,
             adj,
         }
@@ -287,4 +299,46 @@ fn jacobi_eigen(mut a: Vec<Vec<f64>>) -> (Vec<f64>, Vec<Vec<f64>>) {
     }
     let evals: Vec<f64> = (0..n).map(|i| a[i][i]).collect();
     (evals, v)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn s(items: &[&str]) -> Vec<String> {
+        items.iter().map(|x| x.to_string()).collect()
+    }
+
+    fn e(pairs: &[(&str, &str)]) -> Vec<(String, String)> {
+        pairs
+            .iter()
+            .map(|(a, b)| (a.to_string(), b.to_string()))
+            .collect()
+    }
+
+    // A graph dict like {0:[1,2]} registers only the keys as nodes; 1 and 2
+    // appear solely as edge destinations. networkx's add_edge would create
+    // them, and so must we -- otherwise they get no layout position and the
+    // network handler panics indexing `positions[destination]`.
+    #[test]
+    fn new_registers_destination_only_endpoints() {
+        let graph = Graph::new(&s(&["0"]), &e(&[("0", "1"), ("0", "2")]));
+        assert_eq!(graph.n(), 3);
+        for node in ["0", "1", "2"] {
+            assert!(graph.index.contains_key(node), "missing node {node}");
+        }
+        // and every endpoint gets a bfs position
+        let positions = bfs(&graph, "0").expect("bfs from 0");
+        for node in ["0", "1", "2"] {
+            assert!(positions.contains_key(node), "no position for {node}");
+        }
+    }
+
+    // New endpoints are appended in first-seen order, after the declared nodes,
+    // matching how networkx grows the node list as edges are added.
+    #[test]
+    fn destination_endpoints_keep_first_seen_order() {
+        let graph = Graph::new(&s(&["0", "1"]), &e(&[("1", "3"), ("0", "2")]));
+        assert_eq!(graph.nodes, s(&["0", "1", "3", "2"]));
+    }
 }

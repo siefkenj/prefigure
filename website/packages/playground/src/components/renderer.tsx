@@ -69,11 +69,13 @@ export function Renderer() {
         loadPyodide();
     }, []);
 
-    if (status === "loadingPyodide") {
+    if (status === "loadingPyodide" || status === "loadingWasm") {
         return (
             <div className="loading">
                 <Spinner animation="border" style={{ marginRight: "5px" }} />{" "}
-                Loading Pyodide...
+                {status === "loadingWasm"
+                    ? "Loading Rust (WebAssembly)..."
+                    : "Loading Pyodide..."}
             </div>
         );
     }
