@@ -1,29 +1,45 @@
 //! SVG-output parity tests (RUST_PORT_OUTLINE.md §12.3).
 //!
-//! `tests/expected_svgs/{repo,docs}/*.svg` are built by the reference Python
-//! implementation (regenerate with rust/tools/generate_expected_svgs.sh); the matching
-//! sources live in `tests/example_diagrams/`. Once the Rust pipeline exists,
-//! `rust_output_matches_python` builds each source and compares against the Python-produced SVG with
-//! numeric tolerance. Until then it is #[ignore]d, but the comparator itself
-//! is exercised by the self-check tests below.
+//! Uses the shared, language-neutral corpus at the repository root: sources in
+//! `tests/examples/<category>/` and reference snapshots (built by the Python
+//! implementation) in `tests/snapshots/examples/<category>/`. The same assets
+//! drive the Python suite (`tests/test_snapshots.py`); regenerate them with
+//! `poetry run python tests/helpers/generate_snapshots.py`.
+//!
+//! `rust_output_matches_python` builds each snapshotted source with the Rust
+//! pipeline and compares against the Python-produced SVG with numeric
+//! tolerance. The comparator itself is exercised by the self-check tests.
 
 mod svg_compare;
 
 use std::fs;
 use std::path::{Path, PathBuf};
 
-fn expected_svgs_dir() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/expected_svgs")
+/// The shared test-asset root: `<repo>/tests`.
+fn shared_tests_dir() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests")
 }
 
-fn expected_svg_files() -> Vec<PathBuf> {
+fn snapshots_dir() -> PathBuf {
+    shared_tests_dir().join("snapshots/examples")
+}
+
+/// Every committed snapshot, sorted: (category, stem, snapshot path).
+fn snapshot_files() -> Vec<(String, String, PathBuf)> {
     let mut files = Vec::new();
-    for category in ["repo", "docs", "synth"] {
-        let dir = expected_svgs_dir().join(category);
-        if let Ok(entries) = fs::read_dir(&dir) {
-            for entry in entries.flatten() {
-                if entry.path().extension().is_some_and(|e| e == "svg") {
-                    files.push(entry.path());
+    if let Ok(categories) = fs::read_dir(snapshots_dir()) {
+        for category in categories.flatten() {
+            if !category.path().is_dir() {
+                continue;
+            }
+            let cat = category.file_name().to_string_lossy().into_owned();
+            if let Ok(entries) = fs::read_dir(category.path()) {
+                for entry in entries.flatten() {
+                    let path = entry.path();
+                    if path.extension().is_some_and(|e| e == "svg") {
+                        let stem = path.file_stem().unwrap().to_string_lossy().into_owned();
+                        files.push((cat.clone(), stem, path));
+                    }
                 }
             }
         }
@@ -32,16 +48,16 @@ fn expected_svg_files() -> Vec<PathBuf> {
     files
 }
 
-/// The comparator must accept every expected SVG compared against itself.
+/// The comparator must accept every snapshot compared against itself.
 #[test]
 fn comparator_selfcheck_accepts_identical() {
-    let files = expected_svg_files();
+    let files = snapshot_files();
     assert!(
-        files.len() >= 37,
-        "expected the generated SVGs to be present, found {}",
+        files.len() >= 160,
+        "expected the shared snapshots at tests/snapshots to be present, found {}",
         files.len()
     );
-    for path in files {
+    for (_, _, path) in files {
         let svg = fs::read_to_string(&path).unwrap();
         let diffs = svg_compare::compare(&svg, &svg, 1e-4);
         assert!(
@@ -56,14 +72,14 @@ fn comparator_selfcheck_accepts_identical() {
 /// ...and must reject clearly different documents.
 #[test]
 fn comparator_selfcheck_rejects_different() {
-    let files = expected_svg_files();
-    let a = fs::read_to_string(&files[0]).unwrap();
-    let b = fs::read_to_string(files.last().unwrap()).unwrap();
+    let files = snapshot_files();
+    let a = fs::read_to_string(&files[0].2).unwrap();
+    let b = fs::read_to_string(&files.last().unwrap().2).unwrap();
     assert!(
         !svg_compare::compare(&a, &b, 1e-4).is_empty(),
         "comparator failed to distinguish {} from {}",
-        files[0].display(),
-        files.last().unwrap().display()
+        files[0].2.display(),
+        files.last().unwrap().2.display()
     );
 }
 
@@ -77,68 +93,100 @@ fn comparator_selfcheck_numeric_tolerance() {
     assert!(!svg_compare::compare(svg, drifted, 1e-4).is_empty());
 }
 
-/// Examples that must match Python's output. All 37 bundled examples currently
-/// pass; anything that regresses fails the build. New examples added here are
-/// required to pass too (or listed as known-failing above the assert).
+/// Snapshots the Rust port cannot (or should not) match, each still required
+/// to *build* — only the comparison is skipped:
+/// - network-*: automatic <network> layouts are deterministic but use
+///   different coordinates than networkx's PRNG (rust/PORTING.md).
+/// - shape_*: boolean <shape> ops via the geo crate are geometrically equal
+///   but not vertex-identical to shapely (rust/PORTING.md).
+/// - judson-system: a 100-time-unit Lotka-Volterra integration; last-ulp fp
+///   differences steer RK45 step selection, drifting the late trajectory
+///   slightly beyond tolerance. Early points match exactly.
+/// - outline, shape_clip: the reference snapshots capture Python BUGS — the
+///   outlined <point>'s <use> pair is dropped, and everything after the first
+///   <shape> inside <clip shape=...> is missing. The Rust port renders these
+///   correctly, so it legitimately produces MORE than the snapshot.
+const KNOWN_NON_PARITY: &[&str] = &[
+    "extracted_from_docs/network-annotations",
+    "extracted_from_docs/network-combination",
+    "extracted_from_docs/network-intro",
+    "extracted_from_docs/network-spanning-1",
+    "extracted_from_docs/network-spanning-2",
+    "extracted_from_docs/network-tree",
+    "extracted_from_docs/network-verbose",
+    "extracted_from_docs/shape_convex",
+    "extracted_from_docs/shape_difference",
+    "extracted_from_docs/shape_intersection",
+    "extracted_from_docs/shape_union",
+    "extracted_from_docs/shape_xor",
+    "extracted_from_docs/judson-system",
+    "extracted_from_docs/outline",
+    "extracted_from_docs/shape_clip",
+];
+
+/// Everything not in KNOWN_NON_PARITY must match Python's output; anything that
+/// regresses fails the build.
 const MUST_PASS_ALL: bool = true;
 
-/// The real parity test: build every example source with the Rust pipeline and
-/// compare against the SVG that Python produced.
+/// The real parity test: build every snapshotted source with the Rust pipeline
+/// and compare against the SVG that Python produced.
 #[test]
 fn rust_output_matches_python() {
     use prefig_core::core::label::LabelState;
 
-    let examples_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/example_diagrams");
+    let examples_dir = shared_tests_dir().join("examples");
     let mut results: Vec<(String, Vec<String>)> = Vec::new();
+    let mut skipped: Vec<String> = Vec::new();
 
-    for category in ["repo", "docs", "synth"] {
-        let dir = examples_dir.join(category);
-        let Ok(entries) = fs::read_dir(&dir) else {
-            continue;
-        };
-        let mut paths: Vec<_> = entries
-            .flatten()
-            .map(|e| e.path())
-            .filter(|p| p.extension().is_some_and(|e| e == "xml"))
-            .collect();
-        paths.sort();
+    let mut current_dir: Option<PathBuf> = None;
+    for (category, stem, snapshot_path) in snapshot_files() {
+        let name = format!("{category}/{stem}");
+        let source_path = examples_dir.join(&category).join(format!("{stem}.xml"));
+        let source = fs::read_to_string(&source_path)
+            .unwrap_or_else(|e| panic!("snapshot {name} has no source: {e}"));
+        let expected = fs::read_to_string(&snapshot_path).unwrap();
+
         // <read> and <image> resolve data/ relative to the working directory
-        let _ = std::env::set_current_dir(&dir);
-        for path in paths {
-            let stem = path.file_stem().unwrap().to_string_lossy().into_owned();
-            let name = format!("{category}/{stem}");
-            let source = fs::read_to_string(&path).unwrap();
-            let expected_path = expected_svgs_dir().join(category).join(format!("{stem}.svg"));
-            let Ok(expected) = fs::read_to_string(&expected_path) else {
-                continue;
-            };
-
-            let diffs = match prefig_core::engine::build_source(
-                "svg",
-                &source,
-                &stem,
-                "pretext",
-                LabelState::local("svg"),
-            ) {
-                Ok((svg, _annotations)) => svg_compare::compare(&svg, &expected, 1e-2),
-                Err(e) => vec![format!("build failed: {e}")],
-            };
-            results.push((name, diffs));
+        let dir = source_path.parent().unwrap().to_path_buf();
+        if current_dir.as_ref() != Some(&dir) {
+            let _ = std::env::set_current_dir(&dir);
+            current_dir = Some(dir);
         }
+
+        let built = prefig_core::engine::build_source(
+            "svg",
+            &source,
+            &stem,
+            "pretext",
+            LabelState::local("svg"),
+        );
+
+        if KNOWN_NON_PARITY.contains(&name.as_str()) {
+            // must build, but the output is legitimately different
+            if let Err(e) = built {
+                results.push((name, vec![format!("build failed: {e}")]));
+            } else {
+                skipped.push(name);
+            }
+            continue;
+        }
+
+        let diffs = match built {
+            Ok((svg, _annotations)) => svg_compare::compare(&svg, &expected, 1e-2),
+            Err(e) => vec![format!("build failed: {e}")],
+        };
+        results.push((name, diffs));
     }
 
-    let passing: Vec<&str> = results
-        .iter()
-        .filter(|(_, d)| d.is_empty())
-        .map(|(n, _)| n.as_str())
-        .collect();
+    let passing = results.iter().filter(|(_, d)| d.is_empty()).count();
     let failing: Vec<&(String, Vec<String>)> =
         results.iter().filter(|(_, d)| !d.is_empty()).collect();
 
     println!(
-        "parity: {}/{} examples match Python",
-        passing.len(),
-        results.len()
+        "parity: {}/{} snapshots match Python ({} known-non-parity built ok)",
+        passing,
+        results.len(),
+        skipped.len()
     );
     for (name, diffs) in &failing {
         println!("--- {name}: {} differences, first few:", diffs.len());

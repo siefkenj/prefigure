@@ -1,7 +1,7 @@
 //! Expression-evaluation tests checked against the reference Python implementation.
 //!
-//! `expression_tests.json` is generated from the reference Python
-//! implementation by `rust/tools/generate_expression_tests.py`. Each session runs in a
+//! The corpus is the shared `tests/expressions/expression_tests.json` at the
+//! repository root (regenerate with tests/helpers/generate_expressions.py). Each session runs in a
 //! fresh ExpressionContext (mirroring Python's importlib.reload of
 //! user_namespace); steps run in order so definitions persist within a session.
 
@@ -74,7 +74,7 @@ fn value_matches(actual: &Value, expect: &serde_json::Value, tol: Option<f64>) -
 
 #[test]
 fn expressions_match_python_reference() {
-    let json = include_str!("expression_tests.json");
+    let json = include_str!("../../../tests/expressions/expression_tests.json");
     let tests: TestFile = serde_json::from_str(json).expect("valid test JSON");
 
     let mut failures = Vec::new();

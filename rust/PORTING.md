@@ -10,22 +10,28 @@ Last full sync: Python @ `d0ac23a` (version 0.7.0).
 
 ## Status
 
-Every `prefig/core/*.py` handler is ported. All 40 example diagrams — 8 from the
-repo, 29 from [prefigure-docs](https://github.com/davidaustinm/prefigure-docs),
-and 3 synthetic (histogram, delta-forced ODE, read+scatter) — build with the
-Rust pipeline and match the Python SVG output within tolerance
-(`tests/expected_svgs.rs`, `MUST_PASS_ALL = true`). Goldens are generated in the
-`pretext` environment so `<read>`/`<image>` resolve their data files
-(`rust/tools/generate_expected_svgs.py`).
+Every `prefig/core/*.py` handler is ported. The test corpus is the shared,
+language-neutral one at the repository root (`tests/examples`,
+`tests/snapshots`, `tests/expressions`) — the same assets the Python suite
+uses. All 167 snapshotted examples build with the Rust pipeline and 152 match
+the Python SVG output within tolerance (`tests/expected_svgs.rs`,
+`MUST_PASS_ALL = true`); the other 15 are in its `KNOWN_NON_PARITY` list with
+per-case reasons. Snapshots are generated in the `pretext` environment so
+`<read>`/`<image>` resolve their data files
+(`poetry run python tests/helpers/generate_snapshots.py`).
 
 Two subsystems are implemented but cannot be coordinate-parity-tested against
 the reference, by nature: boolean `<shape>` ops (geometrically correct via the
 `geo` crate, but not vertex-identical to shapely) and automatic `<network>`
 layouts (valid deterministic layouts, but not identical to networkx's PRNG-based
-coordinates). Tactile output is a faithful port; it needs a braille translator
-(the `braille-liblouis` feature natively, or the browser host in WASM), neither
-available in CI, so it has no golden — but Python's own no-liblouis tactile path
-actually crashes on outlined labels where the Rust port renders correctly.
+coordinates). A long ODE integration (judson-system) drifts past tolerance late
+in the trajectory from fp accumulation. Two snapshots capture reference-Python
+bugs the Rust port does not reproduce (an outlined `<point>` dropped from the
+output; `<clip shape=...>` truncating everything after the first shape).
+Tactile output is a faithful port; it needs a braille translator (the
+`braille-liblouis` feature natively, or the browser host in WASM), neither
+available in CI, so it has no snapshot — but Python's own no-liblouis tactile
+path actually crashes on outlined labels where the Rust port renders correctly.
 
 | Python module | Rust module | Status | Notes |
 |---|---|---|---|
@@ -64,13 +70,14 @@ actually crashes on outlined labels where the Rust port renders correctly.
 | Suite | Source of truth | Regenerate with |
 |---|---|---|
 | `tests/parser.rs` | outline §16.5 corner-case table | hand-maintained |
-| `tests/expression_tests.rs` + `tests/expression_tests.json` | Python `user_namespace` (147 steps, 12 sessions) | `poetry run python rust/tools/generate_expression_tests.py` |
-| `tests/expected_svgs.rs` + `tests/expected_svgs/{repo,docs,synth}/*.svg` | Python-built SVGs (pretext env): 8 repo + 29 docs + 3 synthetic | `poetry run python rust/tools/generate_expected_svgs.py <prefigure-docs checkout>` |
+| `tests/expression_tests.rs` + `<repo>/tests/expressions/expression_tests.json` | Python `user_namespace` (147 steps, 12 sessions) | `poetry run python tests/helpers/generate_expressions.py` |
+| `tests/expected_svgs.rs` + `<repo>/tests/snapshots/examples/**/*.svg` | Python-built SVGs (pretext env): 167 across hand_crafted / extracted_from_docs / uses_external_data | `poetry run python tests/helpers/generate_snapshots.py` |
+| `tests/examples_smoke.rs` | every `<repo>/tests/examples/**/*.xml` builds (svg+tactile) without panicking | shares the corpus above |
 
 The parity tests build in the `pretext` environment and need MathJax (node) and
-libcairo on the host; data files (`tests/example_diagrams/{docs,synth}/data/`)
-are checked in for `<read>`/`<image>`. Synthetic sources live in
-`rust/tools/synthetic_examples/`.
+libcairo on the host; data files (`<repo>/tests/examples/*/data/`) are checked
+in for `<read>`/`<image>`. See `<repo>/tests/README.md` for the corpus layout
+and regeneration workflow.
 
 ## Behavioral findings pinned by the test data (don't "fix" these)
 

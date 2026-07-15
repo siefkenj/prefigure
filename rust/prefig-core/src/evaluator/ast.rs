@@ -26,6 +26,7 @@ pub enum BinOp {
     Add,
     Sub,
     Mult,
+    MatMul,
     Div,
     FloorDiv,
     Mod,

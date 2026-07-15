@@ -1,14 +1,13 @@
-//! Smoke test: every figure from the PreFigure Guide must build without
-//! panicking.
+//! Smoke test: every shared example diagram must build without panicking.
 //!
-//! The figures are vendored under `tests/guide_figures/` (extracted from
-//! <https://github.com/davidaustinm/prefigure-docs>, `source/code/*.xml` and
-//! `assets/images/*.xml`). Each is run through the SVG and tactile build
-//! pipelines inside `catch_unwind`; the test fails listing every figure that
-//! panics. A graceful `Err` is acceptable -- some guide figures are meant to be
-//! embedded in a PreTeXt document and get their dimensions from that wrapper,
-//! so standalone they legitimately report an error rather than crash. We only
-//! guard against panics (index-out-of-bounds, `unwrap` on `None`, etc.).
+//! Walks the language-neutral corpus at the repository root
+//! (`tests/examples/**/*.xml` -- the same sources the Python suite and the
+//! parity test use). Each is run through the SVG and tactile build pipelines
+//! inside `catch_unwind`; the test fails listing every figure that panics. A
+//! graceful `Err` is acceptable -- a few sources are meant to be embedded in a
+//! PreTeXt document and get their dimensions from that wrapper, so standalone
+//! they legitimately report an error rather than crash. We only guard against
+//! panics (index-out-of-bounds, `unwrap` on `None`, etc.).
 //!
 //! Labels are rendered with fixed stub services so the test needs neither Node
 //! (MathJax) nor cairo, yet still exercises the label-layout code paths.
@@ -94,14 +93,14 @@ fn panic_message(payload: &(dyn std::any::Any + Send)) -> String {
 }
 
 #[test]
-fn guide_figures_build_without_panicking() {
-    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/guide_figures");
+fn examples_build_without_panicking() {
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../tests/examples");
     let mut figures = Vec::new();
     collect_xml(&root, &mut figures);
     figures.sort();
     assert!(
-        figures.len() >= 130,
-        "expected the vendored guide figures under {}, found only {}",
+        figures.len() >= 160,
+        "expected the shared examples under {}, found only {}",
         root.display(),
         figures.len()
     );
@@ -138,14 +137,14 @@ fn guide_figures_build_without_panicking() {
     panic::set_hook(prev_hook);
 
     eprintln!(
-        "guide figures: {} files x 2 formats => {built} built, {graceful_errors} graceful errors, {} panics",
+        "examples: {} files x 2 formats => {built} built, {graceful_errors} graceful errors, {} panics",
         figures.len(),
         panicked.len(),
     );
 
     assert!(
         panicked.is_empty(),
-        "{} guide figure build(s) panicked:\n{}",
+        "{} example build(s) panicked:\n{}",
         panicked.len(),
         panicked.join("\n"),
     );

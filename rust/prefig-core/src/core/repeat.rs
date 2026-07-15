@@ -2,7 +2,6 @@
 
 use crate::core::diagram::Diagram;
 use crate::core::{group, label};
-use crate::core::utilities::pt2long_str;
 use crate::value::{py_str, Value};
 use crate::xml::{self, El};
 
@@ -97,8 +96,15 @@ pub fn repeat(element: &El, diagram: &mut Diagram, parent: &El, outline_group: O
     for (num, k) in iterator.iter().enumerate() {
         let k_str = match k {
             Value::Array(_) => {
+                // Python: "(" + pt2long_str(k, spacer=",") + ",)" over ALL
+                // components, whatever the length
                 let v = k.as_vec_f64().unwrap_or_default();
-                format!("({},)", pt2long_str([v[0], v[1]], ","))
+                let joined = v
+                    .iter()
+                    .map(|c| format!("{c:.4}"))
+                    .collect::<Vec<_>>()
+                    .join(",");
+                format!("({joined},)")
             }
             Value::Num(n) => py_str(*n),
             other => other.to_py_str(),

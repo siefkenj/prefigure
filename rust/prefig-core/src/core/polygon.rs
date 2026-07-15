@@ -228,18 +228,43 @@ pub fn polygon_handler(
     polygon(element, diagram, parent, outline_group, None, None);
 }
 
+/// Spline points: 2-D points like polygon's, or a 1-D series of values that
+/// Python splines over scalars and later zips with the t values.
+fn parse_spline_points(element: &El, diagram: &mut Diagram) -> Option<Vec<Vec<f64>>> {
+    if element.borrow().get("parameter").is_some() {
+        let points = parse_points(element, diagram)?;
+        return Some(points.iter().map(|p| p.to_vec()).collect());
+    }
+    let attr = element.borrow().get("points")?;
+    let value = diagram.ctx.valid_eval(&attr).ok()?;
+    if let Value::Array(items) = &value {
+        if items.iter().all(|i| matches!(i, Value::Num(_))) {
+            // 1-D: a series of scalars, e.g. points="(0,2,1,2,4)"
+            let ys = value.as_vec_f64().ok()?;
+            return Some(ys.into_iter().map(|y| vec![y]).collect());
+        }
+    }
+    match points_from_value(&value) {
+        Some(points) => Some(points.iter().map(|p| p.to_vec()).collect()),
+        None => {
+            log::error!("Error in <spline> evaluating points={attr}");
+            None
+        }
+    }
+}
+
 pub fn spline(element: &El, diagram: &mut Diagram, parent: &El, outline_group: Option<&El>) {
     if element.borrow().get("points").is_none() {
         log::error!("A spline element needs a @points attribute");
         return;
     }
-    let Some(points) = parse_points(element, diagram) else {
+    let Some(point_vecs) = parse_spline_points(element, diagram) else {
         return;
     };
 
     let t_vals_attr = element.borrow().get("t-values");
     let t_vals: Vec<f64> = match t_vals_attr {
-        None => (0..points.len()).map(|i| i as f64).collect(),
+        None => (0..point_vecs.len()).map(|i| i as f64).collect(),
         Some(attr) => match diagram
             .ctx
             .valid_eval(&attr)
@@ -250,7 +275,7 @@ pub fn spline(element: &El, diagram: &mut Diagram, parent: &El, outline_group: O
             None => return,
         },
     };
-    if t_vals.len() != points.len() {
+    if t_vals.len() != point_vecs.len() {
         log::error!("The number of t values and points must be the same in a spline");
         return;
     }
@@ -260,7 +285,6 @@ pub fn spline(element: &El, diagram: &mut Diagram, parent: &El, outline_group: O
         bc = BcType::Periodic;
     }
 
-    let point_vecs: Vec<Vec<f64>> = points.iter().map(|p| p.to_vec()).collect();
     let cs = Rc::new(CubicSpline::new(&t_vals, &point_vecs, bc));
 
     if let Some(name) = element.borrow().get("name") {

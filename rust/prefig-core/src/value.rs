@@ -182,6 +182,76 @@ fn scalar_binop(op: BinOp, a: f64, b: f64) -> Result<f64, EvalError> {
         // Python/numpy semantics: result has the sign of the divisor
         BinOp::Mod => Ok(a - b * (a / b).floor()),
         BinOp::Pow => Ok(a.powf(b)),
+        BinOp::MatMul => Err(err(
+            "matmul: operands must be arrays (numpy rejects scalars)".to_string(),
+        )),
+    }
+}
+
+/// numpy `@`: 1-D @ 1-D is a dot product, 2-D @ 1-D maps rows, 1-D @ 2-D dots
+/// with columns, and 2-D @ 2-D is the matrix product.
+fn matmul(a: &Value, b: &Value) -> Result<Value, EvalError> {
+    fn dot(x: &[Value], y: &[Value]) -> Result<Value, EvalError> {
+        if x.len() != y.len() {
+            return Err(err(format!(
+                "matmul: mismatched lengths {} and {}",
+                x.len(),
+                y.len()
+            )));
+        }
+        let mut sum = Value::Num(0.0);
+        for (xi, yi) in x.iter().zip(y) {
+            sum = binop(BinOp::Add, &sum, &binop(BinOp::Mult, xi, yi)?)?;
+        }
+        Ok(sum)
+    }
+    fn column(m: &[Value], j: usize) -> Result<Vec<Value>, EvalError> {
+        m.iter()
+            .map(|row| match row {
+                Value::Array(r) if j < r.len() => Ok(r[j].clone()),
+                _ => Err(err("matmul: ragged matrix".to_string())),
+            })
+            .collect()
+    }
+    match (a, b) {
+        (Value::Array(xs), Value::Array(ys)) => match (a.rank(), b.rank()) {
+            (1, 1) => dot(xs, ys),
+            (2, 1) => {
+                let rows: Result<Vec<_>, _> = xs
+                    .iter()
+                    .map(|row| match row {
+                        Value::Array(r) => dot(r, ys),
+                        _ => Err(err("matmul: ragged matrix".to_string())),
+                    })
+                    .collect();
+                Ok(Value::Array(rows?))
+            }
+            (1, 2) => {
+                let ncols = match &ys[0] {
+                    Value::Array(r) => r.len(),
+                    _ => 0,
+                };
+                let cols: Result<Vec<_>, _> =
+                    (0..ncols).map(|j| dot(xs, &column(ys, j)?)).collect();
+                Ok(Value::Array(cols?))
+            }
+            (2, 2) => {
+                let rows: Result<Vec<_>, _> = xs
+                    .iter()
+                    .map(|row| {
+                        let Value::Array(r) = row else {
+                            return Err(err("matmul: ragged matrix".to_string()));
+                        };
+                        matmul(&Value::Array(r.clone()), b)
+                    })
+                    .collect();
+                Ok(Value::Array(rows?))
+            }
+            (ra, rb) => Err(err(format!("matmul: unsupported ranks {ra} and {rb}"))),
+        },
+        _ => Err(err(
+            "matmul: operands must be arrays (numpy rejects scalars)".to_string(),
+        )),
     }
 }
 
@@ -189,6 +259,9 @@ fn scalar_binop(op: BinOp, a: f64, b: f64) -> Result<f64, EvalError> {
 /// the higher-rank operand maps the lower-rank one over its items, so
 /// `[[1,2],[3,4]] + [10,20]` adds `[10,20]` to each row.
 pub fn binop(op: BinOp, a: &Value, b: &Value) -> Result<Value, EvalError> {
+    if op == BinOp::MatMul {
+        return matmul(a, b);
+    }
     match (a, b) {
         (Value::Array(xs), Value::Array(ys)) => {
             let (ra, rb) = (a.rank(), b.rank());

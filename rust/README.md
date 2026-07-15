@@ -58,12 +58,12 @@ The compiled package lands in `prefig-wasm/pkg/`.
 
 The tests compare this port against output from the Python version:
 
-- `prefig-core/tests/expression_tests.json` — expressions with the results
+- `<repo>/tests/expressions/expression_tests.json` — expressions with the results
   Python produces. Regenerate with
-  `poetry run python rust/tools/generate_expression_tests.py`.
-- `prefig-core/tests/expected_svgs/` — SVGs that Python builds from the
-  diagrams in `prefig-core/tests/example_diagrams/`. Regenerate with
-  `rust/tools/generate_expected_svgs.sh <path to a prefigure-docs checkout>`.
+  `poetry run python tests/helpers/generate_expressions.py`.
+- `<repo>/tests/snapshots/` — SVGs that Python builds from the diagrams in
+  `<repo>/tests/examples/` (the shared corpus the Python suite also uses).
+  Regenerate with `poetry run python tests/helpers/generate_snapshots.py`.
 
 Both are checked in, so running the tests does not require Python. Regenerate
 them whenever the Python version changes behavior.

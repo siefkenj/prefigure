@@ -105,6 +105,7 @@ peg::parser! {
             = "//" { BinOp::FloorDiv }
             / "/" { BinOp::Div }
             / "%" { BinOp::Mod }
+            / "@" { BinOp::MatMul }
             / "*" !"*" { BinOp::Mult }
 
         rule u_expr() -> Expr
