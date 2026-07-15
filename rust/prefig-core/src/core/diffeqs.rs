@@ -301,6 +301,15 @@ pub fn de_solve(element: &El, diagram: &mut Diagram, _parent: &El, _outline_grou
     let max_step_attr = element.borrow().get("max-step");
     let max_step = max_step_attr.and_then(|a| eval_num(diagram, &a));
 
+    // Python forwards @method to scipy's solve_ivp (RK23, DOP853, LSODA, ...);
+    // only RK45 is implemented here. Warn rather than silently substituting.
+    let method = element.borrow().get_or("method", "RK45");
+    if method != "RK45" {
+        log::warn!(
+            "<de-solve> method=\"{method}\" is not implemented in the Rust port; using RK45"
+        );
+    }
+
     let ctx = &mut diagram.ctx;
 
     // If f contains delta functions, find where they occur and integrate

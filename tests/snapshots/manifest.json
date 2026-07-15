@@ -6,6 +6,7 @@
     "derivatives",
     "diffeqs",
     "implicit",
+    "intersections",
     "projection",
     "riemann",
     "roots_of_unity",

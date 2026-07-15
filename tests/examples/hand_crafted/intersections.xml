@@ -1,0 +1,14 @@
+<diagram dimensions="(300,300)" margins="5">
+  <definition>f(x) = cos(x)</definition>
+  <definition>g(x) = x^2 - 1</definition>
+  <definition>a = intersect((f,g), 1)</definition>
+  <definition>b = solve(f, 0.5, 1)</definition>
+  <coordinates bbox="[-2,-2,2,2]">
+    <grid-axes/>
+    <graph function="f"/>
+    <graph function="g" stroke="red"/>
+    <point p="(a, f(a))" fill="orange"/>
+    <point p="(b, f(b))" fill="green"/>
+    <line endpoints="(line_intersection((((-2,-2),(2,2)), ((-2,2),(2,-2)))), (1,1))" stroke="gray"/>
+  </coordinates>
+</diagram>
