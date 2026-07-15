@@ -42,6 +42,9 @@ describe("prefig-wasm compiler", () => {
             { file: "hand_crafted/roots_of_unity.xml", width: "310" },
             { file: "extracted_from_docs/polar-grid-1.xml", width: "310" },
             { file: "hand_crafted/implicit.xml", width: "310" },
+            // boolean <shape> ops need the `shapes` feature in the wasm build;
+            // this guards against it silently disappearing from the feature set
+            { file: "extracted_from_docs/shape_difference.xml", width: "310" },
         ];
         for (const { file, width } of cases) {
             const { svg } = build_from_string("svg", readExample(file));
@@ -51,6 +54,18 @@ describe("prefig-wasm compiler", () => {
             expect(svg.length, file).toBeGreaterThan(1000);
             expect(svg, file).toMatch(/<(path|line|circle)/);
         }
+    });
+
+    it("computes boolean shape operations (shapes feature)", () => {
+        set_host_api(mockHostApi);
+        const { svg } = build_from_string(
+            "svg",
+            readExample("extracted_from_docs/shape_difference.xml"),
+        );
+        // The A-minus-B region is a path computed by the boolean op and filled
+        // magenta. Without the `shapes` feature in the wasm build, no such
+        // path is emitted at all (the op logs an error and bails).
+        expect(svg).toMatch(/<path(?=[^>]*\bd="M )(?=[^>]*fill="magenta")/);
     });
 
     it("generates default speech annotations when the source has none", () => {
