@@ -23,11 +23,15 @@ pub mod label_tools;
 pub mod legend;
 pub mod line;
 pub mod math_utilities;
+#[cfg(feature = "mathjax-js")]
+pub mod mathjax_js;
 pub mod network;
 pub mod network_layout;
 pub mod parametric_curve;
 pub mod parse;
 pub mod path;
+#[cfg(feature = "ratex")]
+pub mod ratex_math;
 pub mod polygon;
 pub mod read;
 pub mod rectangle;

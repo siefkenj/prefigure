@@ -9,6 +9,18 @@ description = "PreFigure compiled to WebAssembly for use in the browser and Node
 [lib]
 crate-type = ["cdylib", "rlib"]
 
+[features]
+# Render math with an embedded JS engine (Boa) inside the wasm module, so the
+# build needs nothing from the host for MathJax (no processMath callback).
+# Experimental: see prefig-core/src/core/mathjax_js.rs for engine caveats.
+# Pulls getrandom so we can supply an in-module RNG source (keeping the build
+# free of the host `crypto` dependency getrandom would otherwise require).
+mathjax-js = ["prefig-core/mathjax-js", "dep:getrandom"]
+# Render math with the pure-Rust RaTeX engine embedded in the wasm module — no
+# processMath host callback, no JS engine, nothing from the host. This is the
+# working host-free math path for wasm (mathjax-js/Boa is experimental).
+ratex = ["prefig-core/ratex"]
+
 [dependencies]
 # WASM build: everything pure-Rust — XML parsing, XAST, ODE/diffeqs, boolean
 # <shape> ops (geo), and <network> auto-layout (petgraph). Excluded: only the
@@ -16,3 +28,8 @@ crate-type = ["cdylib", "rlib"]
 prefig-core = { path = "../prefig-core", default-features = false, features = ["xml-parse", "xast", "diffeqs", "shapes", "network"] }
 wasm-bindgen = "0.2"
 js-sys = "0.3"
+
+# Only needed by the `mathjax-js` engine (Boa) on wasm; the `custom` feature
+# lets us provide our own RNG so nothing is required from the host.
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+getrandom = { version = "0.2", features = ["custom"], optional = true }

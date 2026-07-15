@@ -105,11 +105,21 @@ impl LabelState {
         #[cfg(not(feature = "braille-liblouis"))]
         let braille: Box<dyn BrailleTranslator> = Box::new(NoBrailleTranslator);
 
-        LabelState {
-            math: Box::new(LocalMathLabels::new(format)),
-            text,
-            braille,
-        }
+        // Math backend, in priority order:
+        //   `ratex`      -> pure-Rust RaTeX (no node, no JS engine; KaTeX-styled)
+        //   `mathjax-js` -> embedded JS engine running MathJax (no node)
+        //   otherwise    -> shell out to node/MathJax, like Python's LocalMathLabels
+        // `ratex` wins because it needs the least (no JS engine). Once a
+        // wasm-capable JS engine can run MathJax directly (see mathjax_js.rs),
+        // `mathjax-js` could take over for MathJax-identical output everywhere.
+        #[cfg(feature = "ratex")]
+        let math: Box<dyn MathLabels> = Box::new(crate::core::ratex_math::RatexMathLabels::new(format));
+        #[cfg(all(feature = "mathjax-js", not(feature = "ratex")))]
+        let math: Box<dyn MathLabels> = Box::new(crate::core::mathjax_js::JsMathLabels::new(format));
+        #[cfg(not(any(feature = "mathjax-js", feature = "ratex")))]
+        let math: Box<dyn MathLabels> = Box::new(LocalMathLabels::new(format));
+
+        LabelState { math, text, braille }
     }
 }
 

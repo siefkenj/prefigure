@@ -12,6 +12,17 @@ use wasm_bindgen::prelude::*;
 
 mod host;
 
+// The embedded MathJax engine (Boa) pulls in getrandom. On wasm we supply our
+// own RNG source so the module needs nothing from the host `crypto` API —
+// MathJax's SVG layout is deterministic, so entropy quality is irrelevant.
+#[cfg(all(target_arch = "wasm32", feature = "mathjax-js"))]
+getrandom::register_custom_getrandom!(pf_wasm_getrandom);
+#[cfg(all(target_arch = "wasm32", feature = "mathjax-js"))]
+fn pf_wasm_getrandom(buf: &mut [u8]) -> Result<(), getrandom::Error> {
+    buf.fill(0);
+    Ok(())
+}
+
 /// The crate version, for checking what is deployed.
 #[wasm_bindgen]
 pub fn version() -> String {

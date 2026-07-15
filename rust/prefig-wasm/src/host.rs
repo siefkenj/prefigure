@@ -37,8 +37,20 @@ fn call_method(method: &str, args: &[JsValue]) -> Option<JsValue> {
 
 /// The label services for a WASM build, all backed by the host object.
 pub fn label_state(format: &str) -> LabelState {
+    // `ratex` (pure Rust) and `mathjax-js` (embedded JS engine) both render math
+    // inside the wasm module, so the host need not provide `processMath`. Text
+    // measurement and braille still come from the host.
+    #[cfg(feature = "ratex")]
+    let math: Box<dyn MathLabels> =
+        Box::new(prefig_core::core::ratex_math::RatexMathLabels::new(format));
+    #[cfg(all(feature = "mathjax-js", not(feature = "ratex")))]
+    let math: Box<dyn MathLabels> =
+        Box::new(prefig_core::core::mathjax_js::JsMathLabels::new(format));
+    #[cfg(not(any(feature = "mathjax-js", feature = "ratex")))]
+    let math: Box<dyn MathLabels> = Box::new(HostMathLabels::new(format));
+
     LabelState {
-        math: Box::new(HostMathLabels::new(format)),
+        math,
         text: Box::new(HostTextMeasurements),
         braille: Box::new(HostBrailleTranslator),
     }

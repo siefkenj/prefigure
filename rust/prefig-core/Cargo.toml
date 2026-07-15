@@ -17,6 +17,15 @@ shapes = ["dep:geo"]
 text-cairo = []
 # braille via the system liblouis (native tactile builds only)
 braille-liblouis = []
+# Render math labels with an embedded JavaScript engine running MathJax, so no
+# external `node`/MathJax process (native) or host callback (wasm) is required.
+# The engine is chosen per target: QuickJS on native, Boa on wasm32.
+mathjax-js = ["xml-parse", "dep:rquickjs", "dep:boa_engine"]
+# Render math labels with the pure-Rust RaTeX engine (LaTeX -> self-contained
+# SVG paths, KaTeX fonts embedded). Needs no JavaScript engine at all and works
+# identically on native and wasm with nothing from the host. Output is
+# KaTeX-styled, not MathJax-styled (see core/ratex_math.rs).
+ratex = ["xml-parse", "dep:ratex-parser", "dep:ratex-layout", "dep:ratex-svg"]
 
 [dependencies]
 log = "0.4"
@@ -27,6 +36,22 @@ serde = { version = "1", features = ["derive"], optional = true }
 serde_json = { version = "1", optional = true }
 petgraph = { version = "0.8", optional = true }
 geo = { version = "0.30", optional = true }
+
+# Pure-Rust LaTeX -> SVG for the `ratex` feature (native and wasm).
+ratex-parser = { version = "0.1", optional = true }
+ratex-layout = { version = "0.1", optional = true }
+ratex-svg = { version = "0.1", features = ["embed-fonts"], optional = true }
+
+# Embedded JS engines for the `mathjax-js` feature (each is target-specific).
+# Native: QuickJS is a small, complete engine that runs MathJax at full fidelity.
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+rquickjs = { version = "0.9", optional = true }
+
+# wasm32: Boa is a pure-Rust engine that compiles to wasm with no host, so the
+# WASM build can render math with nothing from the host environment. (Boa is
+# less mature than QuickJS; see core/mathjax_js.rs.)
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+boa_engine = { version = "0.20", optional = true }
 
 [dev-dependencies]
 # enable cairo text measurement for the parity tests
