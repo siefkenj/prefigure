@@ -1,0 +1,47 @@
+# Egress-firewall sidecar.
+#
+# This container OWNS the shared network namespace and enforces an allowlist
+# with w3cj/devcontainer-features "firewall". The dev container joins this
+# namespace (network_mode: service:firewall) but has the DEFAULT Docker cap set
+# (no NET_ADMIN) and no-new-privileges, so nothing inside it can flush or edit
+# these rules — that is the whole point of using a sidecar instead of the
+# feature's normal in-container mode.
+FROM mcr.microsoft.com/devcontainers/base:ubuntu-24.04
+
+# Dependencies declared by the feature's devcontainer-feature.json `dependsOn`.
+RUN apt-get update \
+ && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+      iptables ipset dnsutils jq curl iproute2 aggregate sudo tcpdump ulogd2 ca-certificates \
+ && rm -rf /var/lib/apt/lists/*
+
+# Vendor the firewall feature.  IMPORTANT: pin FIREWALL_REF to a commit SHA you
+# have reviewed — building a security control from a moving `main` is a
+# supply-chain risk. Override with:  --build-arg FIREWALL_REF=<sha>
+ARG FIREWALL_REF=main
+RUN curl -fsSL "https://github.com/w3cj/devcontainer-features/archive/${FIREWALL_REF}.tar.gz" -o /tmp/fw.tar.gz \
+ && mkdir -p /tmp/fw && tar -xzf /tmp/fw.tar.gz -C /tmp/fw --strip-components=1 \
+ && cp -r /tmp/fw/src/firewall /tmp/firewall-feature
+
+# --- Allowlist selection (feature options become uppercased env vars) ---------
+# Web search / fetch for a Claude Code agent route through the Anthropic API, so
+# allowing that API (CLAUDECODE) enables research WITHOUT opening arbitrary
+# egress. The registries + GitHub + toolchain hosts let postCreateCommand.sh
+# (poetry/npm/cargo/rustup/wasm-pack) succeed behind the firewall.
+# Everything not listed here is DENIED — which is what blocks SMB, mDNS, SSDP,
+# NetBIOS, LLMNR, and any other discovery/exfil traffic.
+ENV CLAUDECODE=true \
+    NPMREGISTRY=true \
+    PYPI=true \
+    CRATESIOREGISTRY=true \
+    GITHUBDOMAINS=true \
+    GITHUBIPS=true \
+    DOCKERNETWORKS=true \
+    VERBOSE=true \
+    HOSTS="static.rust-lang.org,rustwasm.github.io,objects.githubusercontent.com,static.crates.io"
+
+RUN cd /tmp/firewall-feature && bash ./install.sh
+
+COPY firewall-sidecar-entrypoint.sh /usr/local/bin/firewall-sidecar-entrypoint.sh
+RUN chmod +x /usr/local/bin/firewall-sidecar-entrypoint.sh
+
+ENTRYPOINT ["/usr/local/bin/firewall-sidecar-entrypoint.sh"]

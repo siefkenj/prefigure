@@ -1,12 +1,6 @@
 {
-    "name": "prefigure (firewalled) Python, JS & Rust DevContainer",
-    // Two services: `firewall` (owns the netns, enforces the egress allowlist) and
-    // `dev` (this one, shares the netns with no NET_ADMIN). See docker-compose.yml.
-    // The previous single-image config is kept as devcontainer.json.image-backup.
-    "dockerComposeFile": "docker-compose.yml",
-    "service": "dev",
-    "runServices": ["firewall", "dev"],
-    "workspaceFolder": "/workspaces/prefigure",
+    "name": "prefigure Python, JS & Rust DevContainer",
+    "image": "mcr.microsoft.com/devcontainers/base:ubuntu-24.04",
     "features": {
         "ghcr.io/devcontainers/features/python:1": {
             "version": "3.12"
@@ -27,12 +21,7 @@
         // ms-vscode.js-debug/bootloader.js. Avoids erroneous connections to the host's debugger.
         "./features/shell-init-rc": {}
     },
-    // Feature installs run during the dev IMAGE BUILD (before the firewall netns
-    // exists), so python/node/rust download freely. postCreateCommand runs at
-    // RUNTIME, behind the firewall, so its fetches must be on the allowlist
-    // (see Dockerfile.firewall).
     "postCreateCommand": "bash .devcontainer/postCreateCommand.sh",
-    "forwardPorts": [5173, 4173],
     "hostRequirements": {
         "cpus": 2,
         "memory": "8gb"

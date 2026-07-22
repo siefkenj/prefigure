@@ -1,0 +1,43 @@
+# Two-container setup: a firewall sidecar that owns the network namespace and a
+# dev container that shares it WITHOUT NET_ADMIN, so in-container code (including
+# an agent) cannot modify the firewall rules.
+services:
+  firewall:
+    build:
+      context: .
+      dockerfile: Dockerfile.firewall
+      args:
+        # TODO: pin to a reviewed commit SHA of w3cj/devcontainer-features.
+        FIREWALL_REF: main
+    cap_add: ["NET_ADMIN", "NET_RAW"]
+    # Dev-server ports are published HERE because `dev` shares this netns.
+    ports:
+      - "5173:5173"
+      - "4173:4173"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "test", "-f", "/run/fw-ready"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+
+  dev:
+    image: mcr.microsoft.com/devcontainers/base:ubuntu-24.04
+    # Share the firewall's network namespace: `dev` has no interfaces or rules of
+    # its own to administer.
+    network_mode: "service:firewall"
+    # Default cap set has NO NET_ADMIN; this stops it from being regained.
+    security_opt: ["no-new-privileges:true"]
+    depends_on:
+      firewall:
+        condition: service_healthy
+    volumes:
+      - ..:/workspaces/prefigure:cached
+      # Persist Claude Code history/credentials across rebuilds (transcripts live
+      # in ~/.claude/projects). A named volume survives `Rebuild Container`.
+      - claude-home:/home/vscode/.claude
+    working_dir: /workspaces/prefigure
+    command: ["sleep", "infinity"]
+
+volumes:
+  claude-home:
